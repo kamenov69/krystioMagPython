@@ -1,70 +1,17 @@
 #!/usr/bin/env python
 # coding: utf-8
-# pykiba V2.1
-#no Walrus operator!
-#Completible with old functions, but renewed 
-#import time
+# pykiba V3.0  initially pykibaNew
+#     added timeout before a command sending
+#     re.split instead .slplit(',')
+#     added '\n' whiele sending 
+# no Walrus operator!
+# Completible with old functions, but renewed 
+# V3.1 - added  def install_arduino_commands(self):
 import serial
-import serial.tools.list_ports
-import sys
+import re
+import time
+from tools import print_my_ip, search_by_manufacturer, serial_ports_list
 
-
-def which_comport_to_use(serial_speed, manifact_name, name_of_the_device = None):
-    """Prints list of available serial ports
-    
-    Returns
-    -------
-    device of exact port with krystioMag ../dev/ttyACM1
-
-    """
-    ports = serial.tools.list_ports.comports()
-    exact_port = None 
-    
-    for i,p in enumerate(ports):
-        #printing all ports
-        print(f"{i}.   {p.manufacturer}   {p.device}")
-
-    for p in ports:
-        
-        if  manifact_name == p.manufacturer:
-            
-            if name_of_the_device == None:
-                exact_port  = p.device
-                break
-            
-            else:
-                arduino_port = serial.Serial(p.device, serial_speed)
-                arduino_port.timeout = 1     
-            
-                while  arduino_port.out_waiting:
-                    pass    
-                
-                _ = arduino_port.readlines()
-                arduino_port.write(b'hello \r\l')
-                arduino_port.flush()  
-                input_lines=arduino_port.readlines()
-                
-                if name_of_the_device in input_lines:
-                    exact_port  = p.device
-                    arduino_port.close()
-                    break
-
-    return exact_port 
- 
-def serial_ports_list():
-    """Prints list of available serial ports
-    
-    Returns
-    -------
-    ports : list of serial ports
-
-    """
-    ports = serial.tools.list_ports.comports()
-    print("\n")
-    for i,p in enumerate(ports):
-        print(f"{i}.   {p.manufacturer}   {p.device}")
-        
-    return ports #ret_val        
 
 def prepare_line_to_send(*args):
     """Turns All in b'string'
@@ -95,103 +42,82 @@ def prepare_line_to_send(*args):
     
 
 def parse_line(line):
-    """ Parse int and floats from a line,
-    other stais in str
-    
+    """ Parse int and floats from a line.
+    If not a number stais us it is.
     Parameters
     ----------
        line :a b''line 
-       
     Returns:
     ----------
            list[prset strings, parsed ints or floats]
            or
            a float or int nubber 
-    
     """
-    line = line.decode().strip().split(',')
+    line = line.decode().strip()
+    #line = line.split(',')
+    #line = re.split(r"[, \-!?:]+",line)  # Will be splitting on: , <space> - ! ? :
+    line = re.split(r"[, ;#!?:]+",line)   #\- # ; 
+   
     output_val = [] 
     for word in line:   
         try:
             output_val.append(int(word))
-            continue
-        
+            continue    
         except ValueError:
             pass
     
         try:
             output_val.append(float(word))
             continue
-        
         except ValueError:
             pass
     
         output_val.append(word)  
     
-   
     if len( output_val) == 1:
         output_val = output_val[0]
-
+    
     elif  output_val == []:
         output_val = None
     
     return output_val
 
 
+
+
 class Pykiba(serial.Serial):
     """Class Pykiba, 
        It coresponds with the arduino serial command interpret
-       written by Akiba ...
-        
-        Extends Serial...
-            
+       written by Akiba.
+       Extends Serial...   
     """
-    def __init__(self, baudrate, port_device):
+    def __init__(self, **kargs):
         """ Constructor 
-        
-        For the parameters can be used:
-            serial_ports_list()
-        
         Parameters
         ----------
-        port : string with /dev/USBtty serial port device, optional
-               The default is None.
-        
-        baudrate : int, optional
-             The default is 9600.
-             
-        string optional with manifacturer ID
-             The default is None.
-
+            port : device name  e.q. string with /dev/... or comport
+            baudrate : int, optional
+            The default is 9600.    
         Returns
         -------
         None.
-        """            
-
-        if port_device:
-            super().__init__(port = port_device, baudrate = baudrate) 
-            print(f"Connected on port {port_device}")
-            self.timeout = 5
-            _= self.read_all()     
+        """ 
+        super().__init__(**kargs) 
+        self.string_rep = f"Connected on {kargs} \n\n"
+        self.timeout = 5
+        #self.command("hello")
+        _= self.read_all()
+        #time.sleep(2)
+       
                 
-        else:
-            print("Port not found")
-            
-    
-    def __del__(self): 
-        self.close()
-                 
     def write_line(self,*args):     
         """Send a string to arduino
-
         Parameters
         ----------
         buffer : string, bytearray, optional
                  The default is None. Aditional a number can be added.
                  Number will be translated to b'.....' and added to the
-                 string.
-                 
-                 
+                 string.       
         Returns
         -------
         None.
@@ -208,16 +134,13 @@ class Pykiba(serial.Serial):
         
     def raw_lines(self, *args, timeout =5):
         """ Send a string to arduino, return a list with raw lines receved.
-        
         Parameters
         ----------
         bytes__ : bytes, string, optional
-                  string to be send. The default is None.
-        
+                  string to be send. The default is None.     
         timeout : float in seconds, optional
                   how many time to wait for response. 
                   The default is 0.5.
-
         Returns
         -------
         bytes
@@ -229,16 +152,13 @@ class Pykiba(serial.Serial):
         self.write_line(*args)
         ninput=self.readlines()
         self.timeout = tmp_timeout
-         
         return ninput
     
     
-
-
-    def command(self, *args, timeout = 1.5):
+    
+    def command(self, *args, timeout = 2.5):
         """Sends a string with a command to arduino and receives 
         it number responce. Parse int, floats from response
-
         Parameters
         ----------
         *args  : bytes, string, int,float, Optional
@@ -246,7 +166,6 @@ class Pykiba(serial.Serial):
             
         timeout: fload in seconds , optional
                  Whow many time to wait for a line. The default is 0.1.
-
         Returns
         -------
         return_value : float,int or list floats,ints or list of lists floats. 
@@ -259,18 +178,17 @@ class Pykiba(serial.Serial):
         self.flush()
         while self.out_waiting:
             pass
+            
+        time.sleep(0.25)
         _ = self.read_all()      
         self.write_line(*args)
         return_value = []
         #while (line := self.readline()):
-        
-        
         while True:
-            
             line = self.readline()
             if not line:
                 break
-                
+ 
             if self.echo_of_the_command in line: #command overwrite prompt
                 continue    
         
@@ -279,11 +197,10 @@ class Pykiba(serial.Serial):
             
             line = parse_line(line)
             return_value.append(line)
-            
             if '' in  return_value:
                 return_value.remove('')
                 break
-        
+     
         if len(return_value) == 1:
             return_value = return_value[0]
         
@@ -293,6 +210,92 @@ class Pykiba(serial.Serial):
         self.echo_of_the_command = None    
         self.timeout = tmp_timeout
         return return_value
+    
+        
+    def __repr__(self):
+        return self.string_rep
+       
+    def __str__(self):
+        return self.string_rep
+    
+
+    def __del__(self):
+         self.close()     
+         
+         
+         
+class PykiDev(Pykiba):
+    """Altomaticaly installs commands of the Arduino if it support 'help' cmd""" 
+    def __init__(self,  **kargs):
+        """
+            The constructor of the class
+            Parameters:
+            **kargs :
+                port = for an example '/dev/ttyACM0' or COM3, 
+                baudrate = 9600 or 19200 ...
+        Returns
+        -------
+        None.
+        """
+        super().__init__(**kargs)
+        time.sleep(1) # must be!
+        self.install_arduino_commands()
+        
+            
+    def install_arduino_commands(self):
+        """ If cmd support command "help":
+            1. Read all commands with help. 
+            2. For all available commands defines a functions:
+                CMD>>command arg0 arg1 ... -> obj.command(arg1, arg2 ...) 
+            *** bug *** The first defined command missing !!!
+            Parameters:
+            ----------
+            None
+            
+            Returns:
+            -------           
+            None
+        """
+        command_list = self.command("help")
+        for cmd in command_list:
+            def function_template( *args, captured_name = cmd):
+                return self.command( captured_name, *args)
+        
+            setattr(self, cmd, function_template)
+              
+        for cmd in self.command('help'):
+           self.string_rep = self.string_rep + cmd + '\n'
+        
              
+    
+
 if __name__ == '__main__':
-    pass
+    serving = False
+    #serving = True
+    #print_my_ip()
+    usb_manifacturer_name = 'Arduino'
+    baudrate = 9600
+    #
+    if not serving:
+        lstedPorts = serial_ports_list()
+        prt = search_by_manufacturer(lstedPorts , usb_manifacturer_name)
+        ard = PykiDev(port =  prt, baudrate = baudrate)  # install_cmd = True        
+        #ard.install_arduino_commands()
+        #print(ard.hello())        
+        #ard.mode(1) 
+        print(ard)
+    else:
+        import zerorpc
+        lstedPorts = serial_ports_list()
+        prt = search_by_manufacturer(lstedPorts , usb_manifacturer_name)
+        print(f"Board with name {usb_manifacturer_name} connected dev {prt}")
+        print("Startin zerorpc server ...")
+        print("To IP address")
+        print_my_ip()
+        print(":4242")  
+        s = zerorpc.Server(Pykiba(port =  prt, baudrate = baudrate, install_cmd = True))
+        s.bind("tcp://0.0.0.0:4242")
+        s.run()
+    
+    
+  
